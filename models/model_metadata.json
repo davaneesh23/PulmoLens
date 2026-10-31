@@ -1,0 +1,16 @@
+{
+    "project": "PulmoLens",
+    "selected_model": "Gradient Boosting",
+    "calibration": "Sigmoid",
+    "input_features": [
+        "RIDAGEYR",
+        "RIAGENDR",
+        "RIDRETH1",
+        "DMDEDUC2",
+        "DMDMARTL",
+        "INDFMPIR",
+        "CYCLE",
+        "SMOKING_STATUS"
+    ],
+    "target": "RESPIRATORY_TARGET"
+}
