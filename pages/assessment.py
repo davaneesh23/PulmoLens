@@ -1,16 +1,50 @@
+
 import streamlit as st
 from utils.prediction import predict_respiratory_probability
 
 
 def render(html: str, container=st):
-    """Render HTML safely: strip indentation and blank lines so Streamlit's
-    Markdown parser never treats the HTML as a code block."""
-    cleaned = "\n".join(line.strip() for line in html.splitlines() if line.strip())
+    """Render HTML safely: strip indentation and blank lines."""
+    cleaned = "\n".join(
+        line.strip() for line in html.splitlines() if line.strip()
+    )
     container.markdown(cleaned, unsafe_allow_html=True)
 
 
 # --------------------------------------------------
-# PAGE-SPECIFIC STYLES (global tokens come from app.py)
+# NHANES CATEGORY MAPPINGS
+# Display names are converted to original numeric codes
+# before being passed to the trained model.
+# --------------------------------------------------
+
+race_options = {
+    "Mexican American": 1.0,
+    "Other Hispanic": 2.0,
+    "Non-Hispanic White": 3.0,
+    "Non-Hispanic Black": 4.0,
+    "Other Race / Multiple Races": 5.0
+}
+
+education_options = {
+    "Less than 9th grade": 1.0,
+    "9th–11th grade": 2.0,
+    "High school graduate / GED": 3.0,
+    "Some college or Associate degree": 4.0,
+    "College graduate or above": 5.0
+}
+
+marital_options = {
+    "Married": 1.0,
+    "Widowed": 2.0,
+    "Divorced": 3.0,
+    "Separated": 4.0,
+    "Never married": 5.0,
+    "Living with partner": 6.0
+}
+
+
+# --------------------------------------------------
+# PAGE-SPECIFIC STYLES
 # --------------------------------------------------
 
 render("""
@@ -35,22 +69,32 @@ render("""
 
 
 def plate(pct=None, label=""):
-    """Measurement scale for a single result. pct is 0-100, or None for the empty state."""
+    """Measurement scale for a single result."""
     if pct is None:
         return """
         <div class="plate is-empty">
             <div class="plate-track">
-                <div class="scale" style="--v:0%"><div class="scale-ticks"></div></div>
-                <div class="scale-axis"><span>0%</span><span>50%</span><span>100%</span></div>
+                <div class="scale" style="--v:0%">
+                    <div class="scale-ticks"></div>
+                </div>
+                <div class="scale-axis">
+                    <span>0%</span><span>50%</span><span>100%</span>
+                </div>
             </div>
         </div>
         """
+
     return f"""
     <div class="plate">
         <div class="plate-track" style="--v:{pct:.2f}%">
             <div class="plate-mark"><span>{label}</span></div>
-            <div class="scale"><div class="scale-fill"></div><div class="scale-ticks"></div></div>
-            <div class="scale-axis"><span>0%</span><span>50%</span><span>100%</span></div>
+            <div class="scale">
+                <div class="scale-fill"></div>
+                <div class="scale-ticks"></div>
+            </div>
+            <div class="scale-axis">
+                <span>0%</span><span>50%</span><span>100%</span>
+            </div>
         </div>
     </div>
     """
@@ -65,37 +109,46 @@ render("""
     <h1 class="page-title">Respiratory Health Assessment</h1>
     <p class="lede">
         Evaluate a structured NHANES research record using the trained,
-        calibrated machine-learning pipeline. Enter the participant codes
-        and survey information exactly as defined by the study dataset.
+        calibrated machine-learning pipeline. Enter participant information
+        using understandable categories and survey details.
     </p>
-    <div style="margin-top:0.9rem"><span class="status">Model-based research evaluation</span></div>
+    <div style="margin-top:0.9rem">
+        <span class="status">Model-based research evaluation</span>
+    </div>
 </div>
+
 <div class="note note-warn" style="margin-bottom:1.5rem">
-    <strong>Before you begin:</strong> This assessment accepts research variables,
-    not ordinary clinical measurements. Use the NHANES coding definitions and
-    feature values represented in the model's training data.
+    <strong>Before you begin:</strong> This assessment uses demographic,
+    socioeconomic and smoking-related research variables. The selected
+    categories are automatically converted into the original NHANES codes.
 </div>
 """)
 
+
 form_col, result_col = st.columns([1.15, 1], gap="large")
+
 
 # --------------------------------------------------
 # RESEARCH RECORD FORM
 # --------------------------------------------------
 
 with form_col:
+
     with st.form("assessment_form"):
 
         render("""
         <div class="form-sec">
             <div class="form-sec-title">Participant information</div>
-            <div class="form-sec-cap">Demographic and participant-level variables</div>
+            <div class="form-sec-cap">
+                Demographic and participant-level variables
+            </div>
         </div>
         """)
 
         col1, col2 = st.columns(2)
 
         with col1:
+
             age = st.number_input(
                 "Age (years)",
                 min_value=20,
@@ -105,43 +158,51 @@ with form_col:
             )
 
             gender = st.selectbox(
-                "Gender code",
+                "Gender",
                 options=[1.0, 2.0],
-                format_func=lambda x: "1 — Male" if x == 1.0 else "2 — Female",
+                format_func=lambda x: (
+                    "Male" if x == 1.0 else "Female"
+                ),
                 help="NHANES variable: RIAGENDR."
             )
 
         with col2:
-            race = st.selectbox(
-                "Race / ethnicity code",
-                options=[1.0, 2.0, 3.0, 4.0, 5.0],
-                help="NHANES variable: RIDRETH1."
+
+            race_label = st.selectbox(
+                "Race / Ethnicity",
+                options=list(race_options.keys()),
+                help="Select the appropriate NHANES race/ethnicity category."
             )
 
-            education = st.selectbox(
-                "Education code",
-                options=[1.0, 2.0, 3.0, 4.0, 5.0],
-                help="NHANES variable: DMDEDUC2."
+            education_label = st.selectbox(
+                "Education Level",
+                options=list(education_options.keys()),
+                help="Select the participant's highest education category."
             )
 
-        marital = st.selectbox(
-            "Marital status code",
-            options=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-            help="NHANES variable: DMDMARTL."
+        marital_label = st.selectbox(
+            "Marital Status",
+            options=list(marital_options.keys()),
+            help="Select the participant's marital status."
         )
 
         st.markdown("---")
 
         render("""
         <div class="form-sec">
-            <div class="form-sec-title">Socioeconomic and survey information</div>
-            <div class="form-sec-cap">Income-to-poverty ratio, survey cycle and smoking category</div>
+            <div class="form-sec-title">
+                Socioeconomic and survey information
+            </div>
+            <div class="form-sec-cap">
+                Income-to-poverty ratio, survey cycle and smoking category
+            </div>
         </div>
         """)
 
         col3, col4 = st.columns(2)
 
         with col3:
+
             income_ratio = st.number_input(
                 "Income-to-poverty ratio",
                 min_value=0.0,
@@ -163,8 +224,9 @@ with form_col:
             )
 
         with col4:
+
             smoking = st.selectbox(
-                "Smoking status",
+                "Smoking Status",
                 options=["Never", "Former", "Current", "Unknown"],
                 help="Use the same category definitions used during preprocessing."
             )
@@ -173,9 +235,9 @@ with form_col:
 
         render("""
         <div class="note">
-            <strong>Input check:</strong> The submitted values are passed to the
-            existing preprocessing and calibrated prediction pipeline. No manual
-            encoding is performed on this page.
+            <strong>Input check:</strong> Selected categories are automatically
+            converted into their original NHANES numeric codes before being
+            passed to the existing calibrated prediction pipeline.
         </div>
         """)
 
@@ -184,6 +246,7 @@ with form_col:
             use_container_width=True,
             type="primary"
         )
+
 
 # --------------------------------------------------
 # MODEL OUTPUT
@@ -198,14 +261,20 @@ with result_col:
             <h2 class="panel-title">Model output</h2>
             <p class="panel-sub">No assessment has been run yet.</p>
             <p class="result-copy" style="margin-top:0">
-                Complete the research record and select Generate research prediction.
-                The calibrated probability appears here on a 0–100% scale.
+                Complete the research record and select Generate research
+                prediction. The calibrated probability appears here
+                on a 0–100% scale.
             </p>
             {plate(None)}
         </div>
         """)
 
     else:
+
+        # Convert displayed category names to original NHANES codes.
+        race = race_options[race_label]
+        education = education_options[education_label]
+        marital = marital_options[marital_label]
 
         input_data = {
             "RIDAGEYR": age,
@@ -219,15 +288,21 @@ with result_col:
         }
 
         try:
+
             probability = predict_respiratory_probability(input_data)
 
             shown = f"{probability * 100:.2f}%"
-            position = max(0.0, min(float(probability), 1.0)) * 100
+            position = max(
+                0.0,
+                min(float(probability), 1.0)
+            ) * 100
 
             render(f"""
             <div class="panel">
                 <h2 class="panel-title">Model output</h2>
-                <p class="panel-sub"><span class="status is-ready">Assessment complete</span></p>
+                <p class="panel-sub">
+                    <span class="status is-ready">Assessment complete</span>
+                </p>
                 <div class="result-label">Calibrated probability</div>
                 <div class="result-value">{shown}</div>
                 {plate(position, shown)}
@@ -240,9 +315,10 @@ with result_col:
             """)
 
             st.warning(
-                "Research use only. This value is a model-estimated probability for "
-                "the self-reported respiratory outcome defined in the research dataset. "
-                "It is not a diagnosis or a clinically validated individual risk estimate."
+                "Research use only. This value is a model-estimated probability "
+                "for the self-reported respiratory outcome defined in the "
+                "research dataset. It is not a diagnosis or a clinically "
+                "validated individual risk estimate."
             )
 
             with st.expander("Review submitted research record"):
